@@ -1,0 +1,40 @@
+{
+  "name": "chrome-ai-text-completion",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Privacy-first text completion powered by Chrome's built-in AI (Gemini Nano)",
+  "license": "Apache-2.0",
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build && vite build -c vite.content.config.ts",
+    "preview": "vite preview --strictPort --port 5173",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "format": "prettier --write .",
+    "test": "vitest run",
+    "icons": "node scripts/gen-icons.mjs"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.13",
+    "@types/chrome": "^0.0.258",
+    "@types/react": "^19.1.13",
+    "@types/react-dom": "^19.1.9",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "prettier": "^3.3.3",
+    "sharp": "^0.33.5",
+    "tailwindcss": "^4.1.13",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.8",
+    "vitest": "^2.1.3"
+  }
+}

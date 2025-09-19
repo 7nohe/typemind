@@ -1,0 +1,6 @@
+@import 'tailwindcss';
+
+.ai-overlay {
+  position: absolute;
+  z-index: 2147483647;
+}
