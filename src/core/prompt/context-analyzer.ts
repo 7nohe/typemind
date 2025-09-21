@@ -195,8 +195,8 @@ function collectCounts(tokens: string[], counts: Map<string, number>): void {
 }
 
 function buildContextWindow(before: string, after: string): string {
-  const left = normalizeWhitespace(before.slice(Math.max(0, before.length - 200)));
-  const right = normalizeWhitespace(after.slice(0, 140));
+  const left = normalizeWhitespace(before.slice(Math.max(0, before.length - 120)));
+  const right = normalizeWhitespace(after.slice(0, 80));
   return `${left}[CURSOR]${right}`.trim();
 }
 

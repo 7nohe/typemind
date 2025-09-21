@@ -10,7 +10,9 @@
 - ⚡ Fast: Sub-200ms response time target with offline capability
 - 🌍 Universal: Works on any website with text input fields
 - 🎯 Context-Aware: Heuristic analyzer feeds tone/intent/topic signals into prompt selection
+- 🔁 Multi-Suggestion Overlay: Cycle through up to three completions without leaving the keyboard
 - 🛠️ Developer-Friendly: TypeScript + Vite + React + Tailwind
+- 🚀 Prefetch & warmup: keystroke-driven prefetch queues and session warmups reduce first-byte latency
 
 ## Quick Start
 
@@ -38,8 +40,11 @@ npm run build
 
 1. Click on any text field
 2. Start typing to see AI-powered suggestions
-3. Press `Tab` to accept or `Esc` to dismiss
-4. Customize settings via the extension popup (choose Chrome AI or OpenAI)
+3. Accept with the shortcut that matches your editor:
+   - `Tab` in textareas (default web inputs)
+   - `Cmd/Ctrl + Shift + Enter` in other contenteditables
+4. Cycle through suggestions with `Alt/Option + [` and `Alt/Option + ]`
+5. Press `Esc` to dismiss or open settings via the extension popup (choose Chrome AI or OpenAI)
 
 ## Development
 

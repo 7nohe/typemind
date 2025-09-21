@@ -2,6 +2,7 @@ export type Tone = 'formal' | 'casual' | 'creative' | 'professional';
 export type Format = 'plain-text' | 'markdown';
 export type Length = 'shorter' | 'longer' | 'as-is';
 export type Provider = 'chrome-ai' | 'openai';
+export type CompletionLanguage = 'auto' | 'en' | 'es' | 'ja';
 
 export interface Preferences {
   readonly enabled: boolean;
@@ -14,6 +15,8 @@ export interface Preferences {
   readonly maxTokens: number; // tokens per completion
   readonly openaiApiKey?: string;
   readonly openaiModel?: string;
+  readonly includePromptDebugContext: boolean;
+  readonly completionLanguage: CompletionLanguage;
 }
 
 export const defaultPreferences: Preferences = {
@@ -22,14 +25,16 @@ export const defaultPreferences: Preferences = {
   tone: 'professional',
   format: 'plain-text',
   length: 'as-is',
-  temperature: 0.7,
-  topK: 3,
-  maxTokens: 150,
+  temperature: 0.5,
+  topK: 1,
+  maxTokens: 60,
   openaiModel: 'gpt-4o-mini',
+  includePromptDebugContext: false,
+  completionLanguage: 'auto',
 };
 
 export class PreferencesStore {
-  private static readonly KEY = 'ai_completion_preferences_v1';
+  static readonly KEY = 'ai_completion_preferences_v1';
 
   async get(): Promise<Preferences> {
     const res = await chrome.storage.local.get(PreferencesStore.KEY);

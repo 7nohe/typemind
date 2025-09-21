@@ -13,6 +13,16 @@ declare namespace ChromeAI {
     maxTemperature: number;
   }
 
+  type ExpectedContent = {
+    type: 'text' | 'image' | 'audio';
+    languages?: string[];
+  };
+
+  interface AvailabilityOptions {
+    expectedInputs?: ExpectedContent[];
+    expectedOutputs?: ExpectedContent[];
+  }
+
   interface CreateOptions {
     temperature?: number;
     topK?: number;
@@ -24,7 +34,8 @@ declare namespace ChromeAI {
     monitor?: (m: DownloadMonitor) => void;
     /** AbortSignal to cancel creation */
     signal?: AbortSignal;
-    expectedOutputs?: Array<{ type: 'text'; languages: string[] }>;
+    expectedInputs?: ExpectedContent[];
+    expectedOutputs?: ExpectedContent[];
   }
 
   /** Minimal monitor interface for model download events */
@@ -53,7 +64,7 @@ declare namespace ChromeAI {
   }
 
   interface LanguageModelAPI {
-    availability(): Promise<Availability>;
+    availability(options?: AvailabilityOptions): Promise<Availability>;
     params(): Promise<ModelParams>;
     create(options?: CreateOptions): Promise<AISession>;
   }

@@ -9,11 +9,13 @@ import { SuggestionRanker } from './suggestion-ranker';
 import { analyzeContext } from '../prompt/context-analyzer';
 import { PromptSelector, detectDomainType, type CompletionContext } from '../prompt/selector';
 import { PromptOptimizer } from '../prompt/optimizer';
+import { deriveSessionScope } from './session-scope';
 
 export interface EngineConfig {
   readonly maxSuggestions?: number;
   readonly responseTimeout?: number;
   readonly aiConfig: AIConfig;
+  readonly includePromptDebugContext?: boolean;
 }
 
 export class CompletionEngine {
@@ -27,6 +29,8 @@ export class CompletionEngine {
   private readonly responseTimeout: number;
   private readonly selector = new PromptSelector();
   private readonly optimizer = new PromptOptimizer();
+  private currentAbortController: AbortController | null = null;
+  private readonly includePromptDebugContext: boolean;
 
   constructor(
     cfg: EngineConfig,
@@ -35,9 +39,10 @@ export class CompletionEngine {
     }
   ) {
     this.maxSuggestions = cfg.maxSuggestions ?? 3;
-    this.responseTimeout = cfg.responseTimeout ?? 5000;
+    this.responseTimeout = cfg.responseTimeout ?? 10000;
     this.aiConfig = cfg.aiConfig;
     this.ai = provider ?? new ChromeAIManager();
+    this.includePromptDebugContext = cfg.includePromptDebugContext ?? false;
   }
 
   private readonly aiConfig: AIConfig;
@@ -46,27 +51,116 @@ export class CompletionEngine {
     request: CompletionRequest,
     options: CompletionOptions = {}
   ): Promise<CompletionSuggestion[]> {
+    this.cancelInFlight('engine:new-request');
+
     const cached = this.cache.get(this.keyOf(request));
     if (cached) {
-      return this.ranker.rank([cached]);
+      return cached;
     }
 
     const promptText = this.buildPrompt(request);
-
-    const result = await this.executor.execute(async () =>
-      this.ai.prompt(promptText, this.aiConfig, {
-        responseTimeout: options.responseTimeout ?? this.responseTimeout,
-      })
+    const sessionScope = this.buildSessionScope(request);
+    const responseConstraint = this.buildResponseSchema();
+    const rawResult = await this.executePrompt(
+      promptText,
+      sessionScope,
+      responseConstraint,
+      options
     );
+    if (rawResult === null) return [];
 
-    this.cache.set(this.keyOf(request), result);
-    return this.ranker.rank([result]).slice(0, this.maxSuggestions);
+    const ranked = this.rankSuggestions(rawResult);
+    this.cache.set(this.keyOf(request), ranked);
+    return ranked;
+  }
+
+  private buildSessionScope(request: CompletionRequest): string {
+    return deriveSessionScope({
+      ...(request.contextMetadata.url !== undefined
+        ? { url: request.contextMetadata.url }
+        : {}),
+      ...(request.contextMetadata.pageTitle !== undefined
+        ? { pageTitle: request.contextMetadata.pageTitle }
+        : {}),
+    });
+  }
+
+  private async executePrompt(
+    promptText: string,
+    sessionScope: string,
+    responseConstraint: ReturnType<CompletionEngine['buildResponseSchema']>,
+    options: CompletionOptions
+  ): Promise<string | null> {
+    const abortController = new AbortController();
+    this.currentAbortController = abortController;
+
+    const startedAt = Date.now();
+    const requestId = this.generateRequestId();
+    this.logPromptStart(requestId);
+
+    try {
+      const result = await this.executor.execute(() =>
+        this.ai.prompt(promptText, this.aiConfig, {
+          responseTimeout: options.responseTimeout ?? this.responseTimeout,
+          sessionScope,
+          responseConstraint,
+          omitResponseConstraintInput: false,
+          abortSignal: abortController.signal,
+        })
+      );
+      this.logPromptSuccess(startedAt, requestId, result);
+      return result;
+    } catch (error) {
+      if (this.isAbortError(error)) {
+        this.logPromptAbort(startedAt);
+        return null;
+      }
+      throw error;
+    } finally {
+      if (this.currentAbortController === abortController) {
+        this.currentAbortController = null;
+      }
+    }
+  }
+
+  private rankSuggestions(rawResult: string): CompletionSuggestion[] {
+    const parsedTexts = this.parseSuggestions(rawResult);
+    if (parsedTexts === null) {
+      return this.ranker.rank([rawResult]).slice(0, this.maxSuggestions);
+    }
+    if (parsedTexts.length === 0) return [];
+    return this.ranker.rank(parsedTexts.slice(0, this.maxSuggestions));
+  }
+
+  private generateRequestId(): string {
+    return Math.random().toString(36).slice(2, 10);
+  }
+
+  private logPromptStart(requestId: string): void {
+    console.debug('[CompletionEngine] Sending prompt to AI. Request ID:', requestId);
+  }
+
+  private logPromptSuccess(startedAt: number, requestId: string, rawResult: string): void {
+    const seconds = (Date.now() - startedAt) / 1000;
+    console.debug(
+      '[CompletionEngine] Received response from AI. Duration:',
+      seconds,
+      's. Request ID:',
+      requestId,
+      'Raw result:',
+      rawResult
+    );
+  }
+
+  private logPromptAbort(startedAt: number): void {
+    console.debug('[CompletionEngine] Prompt aborted before completion', {
+      durationMs: Date.now() - startedAt,
+    });
   }
 
   private keyOf(req: CompletionRequest): string {
-    return `${req.contextMetadata.domain ?? 'general'}::${req.contextMetadata.language ?? 'en'}::${
-      req.inputText
-    }::${req.cursorPosition}`;
+    return `${req.contextMetadata.domain ?? 'general'}::${req.contextMetadata.language ?? 'en'}::${req.inputText
+      }::${req.cursorPosition}`;
   }
 
   private buildPrompt(req: CompletionRequest): string {
@@ -128,25 +222,23 @@ export class CompletionEngine {
     before: string,
     after: string
   ): string {
-    const maxLen = 60;
-    const insertionRules = [
-      'OUTPUT FORMAT: Return only the minimal insertion string to place at the caret so that Before + INSERTION + After is natural.',
-      `- No explanations, quotes, or markdown. Max length: ${maxLen} characters (1–20 words typically).`,
-      '- Do not repeat text from Before or After.',
-      '- Whitespace: include necessary leading whitespace/newlines only; avoid trailing spaces.',
-      '- Punctuation: prefer closing at a natural boundary; include at most one closing mark; never duplicate punctuation already at the start of After.',
-      '- If nothing should be inserted, return an empty string.',
-    ].join('\n');
+    const maxLen = 50;
+    const instructions = [
+      'Respond with JSON that satisfies the schema.',
+      `suggestions[].text must be the minimal insertion (<=${maxLen} chars) keeping Before+INSERTION+After natural.`,
+      'Provide up to 3 suggestions total; omit extras even if multiple variants are possible.',
+      'Avoid duplicating existing text and strip trailing whitespace. Return [] if nothing fits.',
+    ].join(' ');
 
-    return [
-      assembled,
-      `Context summary: ${ctx.pageSummary || 'n/a'}`,
-      `Context window: ${ctx.contextWindow || '[CURSOR]'}`,
-      insertionRules,
-      `Before: ${before}`,
-      `After: ${after}`,
-      'Insertion:',
-    ].join('\n\n');
+    const sections: string[] = [];
+    if (this.includePromptDebugContext) {
+      if (assembled.trim().length > 0) {
+        sections.push(assembled);
+      }
+      sections.push(`Context window: ${ctx.contextWindow || '[CURSOR]'}`);
+    }
+    sections.push(instructions, `Before: ${before}`, `After: ${after}`);
+    return sections.join('\n\n');
   }
 
   private extractSentence(text: string, caret: number): string {
@@ -167,5 +259,57 @@ export class CompletionEngine {
     const endRel = after.indexOf('\n\n');
     const endIdx = endRel >= 0 ? caret + endRel : text.length;
     return text.slice(startIdx, endIdx).trim();
+  }
+
+  private buildResponseSchema(): unknown {
+    return {
+      type: 'object',
+      additionalProperties: false,
+      required: ['suggestions'],
+      properties: {
+        suggestions: {
+          type: 'array',
+          minItems: 0,
+          maxItems: this.maxSuggestions,
+          items: {
+            type: 'object',
+            additionalProperties: false,
+            required: ['text'],
+            properties: {
+              text: {
+                type: 'string',
+                description:
+                  'Minimal insertion string to place at the caret. Exclude any surrounding context already present.',
+              },
+            },
+          },
+        },
+      },
+    };
+  }
+
+  private parseSuggestions(raw: string): string[] | null {
+    try {
+      const data = JSON.parse(raw) as {
+        suggestions?: Array<{ text?: unknown }>;
+      };
+      if (!Array.isArray(data.suggestions)) return null;
+      return data.suggestions
+        .map((item) => (typeof item?.text === 'string' ? item.text : ''))
+        .filter((text) => text.length > 0);
+    } catch {
+      return null;
+    }
+  }
+
+  private cancelInFlight(reason: unknown = 'engine:cancelled'): void {
+    if (this.currentAbortController && !this.currentAbortController.signal.aborted) {
+      this.currentAbortController.abort(reason);
+    }
+    this.currentAbortController = null;
+  }
+
+  private isAbortError(error: unknown): boolean {
+    return error instanceof Error && error.message === 'AI aborted';
   }
 }

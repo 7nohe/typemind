@@ -47,6 +47,19 @@ const SELECT_FIELDS: Array<{
     getValue: (prefs) => prefs.length,
     setValue: (value, update) => void update({ length: value as Preferences['length'] }),
   },
+  {
+    id: 'completionLanguage',
+    label: 'Completion Language',
+    options: [
+      { value: 'auto', label: 'Auto (based on browser)' },
+      { value: 'en', label: 'English' },
+      { value: 'ja', label: 'Japanese' },
+      { value: 'es', label: 'Spanish' },
+    ],
+    getValue: (prefs) => prefs.completionLanguage,
+    setValue: (value, update) =>
+      void update({ completionLanguage: value as Preferences['completionLanguage'] }),
+  },
 ];
 
 const NUMERIC_FIELDS: Array<{
@@ -146,6 +159,19 @@ function BasicRows({
         />
         Enable
       </label>
+      <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-200">
+        <input
+          type="checkbox"
+          checked={prefs.includePromptDebugContext}
+          onChange={(e) =>
+            void update({ includePromptDebugContext: e.currentTarget.checked })
+          }
+        />
+        Include prompt debug context (assembled + window)
+      </label>
+      <p className="ml-6 text-xs text-zinc-500 dark:text-zinc-400">
+        Enabling this adds extra prompt metadata and may slow completions slightly.
+      </p>
       {SELECT_FIELDS.map((field) => (
         <PreferenceSelect
           key={field.id}

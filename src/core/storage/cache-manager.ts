@@ -1,5 +1,7 @@
+import type { CompletionSuggestion } from '../../types/completion.d';
+
 interface CacheEntry {
-  value: string;
+  value: CompletionSuggestion[];
   timestamp: number;
   accessCount: number;
 }
@@ -9,18 +11,18 @@ export class CompletionCache {
   private readonly TTL = 5 * 60 * 1000; // 5 minutes
   private readonly MAX_SIZE = 1000;
 
-  set(key: string, value: string): void {
+  set(key: string, value: CompletionSuggestion[]): void {
     if (this.cache.size >= this.MAX_SIZE) {
       this.evictLRU();
     }
     this.cache.set(key, {
-      value,
+      value: value.map((suggestion) => ({ ...suggestion })),
       timestamp: Date.now(),
       accessCount: 1,
     });
   }
 
-  get(key: string): string | null {
+  get(key: string): CompletionSuggestion[] | null {
     const entry = this.cache.get(key);
     if (!entry) return null;
     if (Date.now() - entry.timestamp > this.TTL) {
@@ -28,7 +30,7 @@ export class CompletionCache {
       return null;
     }
     entry.accessCount++;
-    return entry.value;
+    return entry.value.map((suggestion) => ({ ...suggestion }));
   }
 
   private evictLRU(): void {
@@ -48,7 +50,7 @@ export class RateLimitedExecutor {
   private readonly queue: Array<() => Promise<void>> = [];
   private executing = 0;
   private readonly maxConcurrent = 1;
-  private readonly minDelay = 100;
+  private readonly minDelay = 40;
 
   async execute<T>(fn: () => Promise<T>): Promise<T> {
     return new Promise((resolve, reject) => {

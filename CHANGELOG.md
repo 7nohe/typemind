@@ -2,18 +2,10 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
+## [0.1.0] - 2025-09-20
 
-- Docs: Updated provider policy, context analyzer coverage, and testing guidance.
-- Build: Added GitHub Actions workflow running npm typecheck, lint, test, and build on pushes/PRs.
-
-## [0.1.1] - 2025-09-15
-
-- Change: Tab accept now inserts the suggested completion at the caret (replacing any selected text) instead of replacing the entire textarea value.
-- Prompt tuning: provider returns minimal insertion only; max ≈ 60 chars; punctuation policy avoids duplication and favors natural boundary.
-- Completion timing: triggers on space/Enter/punctuation or when current token length ≥ 3, with 200ms debounce.
-
-## [0.1.0] - 2025-09-13
-
-- Initial scaffold for MV3 TypeScript extension
-- Core AI wrappers, completion engine, content UI, popup, and docs
+- Initial release: MV3 TypeScript extension scaffold with background service worker, content overlay, popup UI, and core AI wrappers.
+- Completion engine: structured JSON response contract (≤3 suggestions), per-page session scopes, abort-aware prompting, and trimmed minimal insertions that honor punctuation rules.
+- UX: Overlay cycles through multiple ranked suggestions, surfaces provider notices, and supports editor-specific accept shortcuts (`Tab` for textareas, `Cmd/Ctrl + Shift + Enter` for Notion/contenteditables).
+- Performance: Keystroke-driven prefetcher, AI warmup messaging, 200ms debounce, and rate limiting reduce first-token latency while preserving cache efficiency.
+- Settings & docs: Added `Completion Language` selector, `Include prompt debug context` toggle, and refreshed README/AGENTS/development guides to cover the new behaviors.

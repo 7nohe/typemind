@@ -82,13 +82,15 @@ Vitest + jsdom are configured. Add specs under `tests/` when changing core logic
 
 - Default behavior: Chrome AI (on-device). Users may manually switch to OpenAI if they provide an API key. Do not auto-fallback.
 - OpenAI usage is opt-in in the popup settings. The API key is stored in `chrome.storage.local` and never committed to the repo.
+- Advanced preferences: `includePromptDebugContext` adds assembled prompt + window to provider input (disabled by default). `completionLanguage` forces Chrome AI output (`auto`, `en`, `ja`, `es`). Keep migrations backward-compatible.
 
 ## Content UI and Styling
 
 - The content UI renders inside a Shadow DOM to avoid affecting page styles.
 - Tailwind CSS is injected into the Shadow DOM only (`assets/style.css`).
-- The extension targets `textarea` and `contenteditable` editing hosts.
-- Accepting a suggestion with Tab inserts the completion at the current caret position (replacing any selected text) and moves the cursor to the end of the inserted text.
+- The extension targets `textarea` and `contenteditable` editing hosts (including Notion).
+- Accept shortcuts: `Tab` (textarea) and `Cmd/Ctrl + Shift + Enter` (Notion & other contenteditables). Navigation across multiple suggestions uses `Alt/Option + [` or `Alt/Option + ]`.
+- Accepting inserts only the non-overlapping tail of the suggestion so existing text is never duplicated.
 - Provider contract: the completion provider returns only the minimal insertion string to place at the caret. It must not echo the existing text, and it may include necessary leading whitespace.
 - Prompt heuristics: `src/core/prompt/context-analyzer.ts` computes tone/intent/topic hints used when building the final prompt.
 
@@ -96,19 +98,20 @@ Vitest + jsdom are configured. Add specs under `tests/` when changing core logic
 
 - Trigger timing:
   - On space, Enter, or common punctuation (.,!?;:、。 など)
-  - On character keys once the currentトークン長が3文字以上
+  - On character keys once the currentトークン長が2文字以上
   - Debounce 200ms + レート制御（`RateLimitedExecutor`）
-- Prompt policy（差分のみ）:
-  - 最大挿入長 ≈ 60 文字（プロバイダは短く簡潔に）
-  - 句読点方針: 次の自然な区切りまでを推奨。必要なら閉じ句読点を1つだけ付与。ただし `After` 側が句読点で始まる場合は重複禁止。
-  - 先頭空白は必要なときのみ許容。末尾スペースは原則禁止。
-
-## Debugging
+- Prefetching: `.`, `/`, `Enter`, `(`, and `=>` trigger background `COMPLETION_PREFETCH` without showing UI.
+- Warmup: the content script sends `AI_WARMUP_REQUEST` on mount so Chrome AI can prime/download models early.
+- Prompt policy (diff only):
+  - Responses must be returned as `{"suggestions": [{"text": string}]}` JSON (up to 3 entries). If empty, return `[]`.
+  - Maximum insertion length ≈ 50 characters (providers should keep suggestions short and concise).
+  - Punctuation policy: Suggest up to the next natural delimiter. If needed, add only one closing punctuation mark. However, if the `After` side starts with punctuation, do not duplicate.
+  - Leading whitespace is allowed only when necessary. Trailing spaces are generally prohibited.
 
 - Logs are prefixed with `[AICompletion]`.
 - Background logs: `chrome://extensions` → “service worker” link under the extension → Console.
 - Content logs: regular DevTools console on the target page.
-- Timeout handling: If you see `On-device AI timed out.`, the Chrome on-device model did not respond within the budget. This is logged at `debug` level to avoid noise. You can increase the timeout in `src/background/service-worker.ts` (`responseTimeout`) or switch provider to OpenAI in settings.
+- Timeout/abort handling: background surfaces `AI timeout` or `AI aborted` errors when the `AbortSignal` fires (10s default). Respect cancellation when wrapping provider calls or adding new middleware.
 
 ## Release Checklist
 

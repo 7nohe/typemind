@@ -20,6 +20,8 @@
   - Content: `src/content/index.tsx` (textarea‑only behavior)
   - Popup: `src/popup/popup.tsx` / `src/popup/index.html`
   - Core: `src/core/**` (AI wrappers, completion engine, storage)
+  - Session scope helpers: `src/core/completion/session-scope.ts`
+  - Prefetch & suggestion utilities: `src/content/prefetch-detector.ts`, `src/content/suggestion-utils.ts`
 
 **Provider Policy**
 
@@ -52,14 +54,17 @@
 - When changing code:
   - Content script must be IIFE (`dist/content.js`) with no top‑level imports.
   - Inject Tailwind only inside the Shadow DOM via `<link>`.
+  - Completion providers must honour the structured response contract: return JSON with `suggestions: [{ text: string }]`, up to 3 entries. The engine will fall back to rank raw text but JSON keeps analytics consistent.
 - Target text inputs safely: support `textarea` and contenteditable editing hosts (`src/content/text-detector.ts`).
   - Tab accept inserts the completion at the caret without replacing the entire textarea (`src/content/index.tsx`).
+  - Abort signals are now plumbed through the engine—always propagate `AbortSignal` when adding async layers to avoid leaks.
 
 **Coding Standards**
 
 - TypeScript strict; explicit return types; no `any`.
 - ESLint as configured in `.eslintrc.json` (function size guidelines apply).
 - Minimize side effects; do not break public APIs or data contracts.
+- Preferences now include `includePromptDebugContext` and `completionLanguage`; ensure new fields remain backward-compatible with stored `chrome.storage.local` shape.
 
 **Build/Run**
 
@@ -82,12 +87,15 @@
 - Overlay UI is isolated in Shadow DOM; positioned near the caret.
 - Accessibility: proper roles/labels, Esc to dismiss, Tab to accept.
 - Do not mutate the page DOM beyond adding a host `<div>`.
-- Completion timing: trigger on space/Enter/common punctuation, or when the current token length ≥ 3 characters; keep 200ms debounce.
+- Completion timing: trigger on space/Enter/common punctuation, or when the current token length ≥ 2 characters; keep 200ms debounce.
+- Accept shortcuts: textarea → `Tab`; other contenteditable hosts → `Cmd/Ctrl + Shift + Enter`. Multi-suggestion navigation uses `Alt/Option + [` and `Alt/Option + ]`.
+- Overlay shows loading when suggestions are pending; avoid UI that flashes when `pending` count > 0.
 
 **Performance Guidelines**
 
 - Use 200ms debounce and the rate‑limited executor (`src/core/storage/cache-manager.ts`).
 - Cache recent results with TTL and size constraints.
+- Prefer prefetching (see `createPrefetchRequest`) on lightweight triggers such as `.`, `/`, `Enter`, `(`, arrow functions (`=>`). Warm up AI sessions via `AI_WARMUP_REQUEST` to reduce first-byte latency.
 
 **Extension Points**
 
@@ -97,6 +105,7 @@
 - Chrome AI: `src/core/ai/prompt-manager.ts` manages session reuse and availability checks.
 - OpenAI provider: `src/core/ai/openai-provider.ts` (Chat Completions API).
 - Provider output contract: return only the minimal insertion string to place at the caret (no echo, no quotes). Leading whitespace is allowed if necessary for natural spacing.
+- Session scope hashing lives in `src/core/completion/session-scope.ts`; reuse helpers instead of ad hoc scopes. Warmup & prefetch messaging uses `COMPLETION_PREFETCH` and `AI_WARMUP_REQUEST` payloads.
 
 **Review Checklist**
 

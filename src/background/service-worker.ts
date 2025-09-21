@@ -2,11 +2,12 @@ import type {
   AppMessage,
   CompletionRequestPayload,
   CompletionResponsePayload,
+  WarmupRequestPayload,
 } from '../types/completion.d';
 import { CompletionEngine } from '../core/completion/completion-engine';
-import { PreferencesStore } from '../core/storage/preferences';
+import { PreferencesStore, type Preferences } from '../core/storage/preferences';
 import { OpenAIProvider } from '../core/ai/openai-provider';
-import { ChromeAIManager } from '../core/ai/prompt-manager';
+import { ChromeAIManager, type AIConfig } from '../core/ai/prompt-manager';
 import { SYSTEM_PROMPT } from '../core/prompt/prompts';
 import { logger } from '../utils/logger';
 
@@ -19,14 +20,29 @@ interface ProviderInfo {
 
 type CompletionStatus = Exclude<CompletionResponsePayload['status'], undefined>;
 
+interface EngineCacheEntry {
+  readonly key: string;
+  readonly engine: CompletionEngine;
+  readonly providerInfo: ProviderInfo;
+}
+
+let engineCache: EngineCacheEntry | null = null;
+
 async function getEngine(): Promise<{ engine: CompletionEngine; providerInfo: ProviderInfo }> {
   const prefs = await prefsStore.get();
+  const cacheKey = buildEngineCacheKey(prefs);
+  if (engineCache && engineCache.key === cacheKey) {
+    return { engine: engineCache.engine, providerInfo: engineCache.providerInfo };
+  }
+
+  const outputLanguage = prefs.completionLanguage === 'auto' ? undefined : prefs.completionLanguage;
   const aiConfig = {
     temperature: prefs.temperature,
     topK: prefs.topK,
     maxTokens: prefs.maxTokens,
     systemPrompt: SYSTEM_PROMPT,
-  } as const;
+    ...(outputLanguage ? { outputLanguage } : {}),
+  } satisfies AIConfig;
 
   // Decide provider based on explicit preference
   let provider: ChromeAIManager | OpenAIProvider;
@@ -43,11 +59,35 @@ async function getEngine(): Promise<{ engine: CompletionEngine; providerInfo: Pr
     {
       aiConfig,
       maxSuggestions: 3,
-      responseTimeout: 5000,
+      responseTimeout: 10000,
+      includePromptDebugContext: prefs.includePromptDebugContext,
     },
     provider
   );
-  return { engine, providerInfo: { preference: prefs.provider, resolved } };
+
+  engineCache = {
+    key: cacheKey,
+    engine,
+    providerInfo: { preference: prefs.provider, resolved },
+  };
+
+  return { engine, providerInfo: engineCache.providerInfo };
+}
+
+function buildEngineCacheKey(prefs: Preferences): string {
+  const parts = [
+    prefs.provider,
+    prefs.temperature.toString(10),
+    prefs.topK.toString(10),
+    prefs.maxTokens.toString(10),
+    prefs.includePromptDebugContext ? '1' : '0',
+    prefs.completionLanguage,
+  ];
+  if (prefs.provider === 'openai') {
+    parts.push(prefs.openaiModel ?? 'gpt-4o-mini');
+    parts.push(prefs.openaiApiKey ?? '');
+  }
+  return parts.join('|');
 }
 
 function classifyProviderError(message: string, providerInfo?: ProviderInfo): {
@@ -101,6 +141,11 @@ async function safeGetProviderInfo(): Promise<ProviderInfo | undefined> {
   }
 }
 
+interface WarmupResponsePayload {
+  readonly ok: boolean;
+  readonly provider?: ProviderInfo;
+}
+
 async function handleCompletionRequest(
   req: CompletionRequestPayload,
   sendResponse: (response: CompletionResponsePayload) => void
@@ -127,12 +172,36 @@ async function handleCompletionRequest(
   }
 }
 
+async function handleWarmupRequest(
+  payload: WarmupRequestPayload,
+  sendResponse: (response: WarmupResponsePayload) => void
+): Promise<void> {
+  try {
+    if (payload.phase === 'availability') {
+      const providerInfo = await safeGetProviderInfo();
+      sendResponse({ ok: providerInfo !== undefined, ...(providerInfo ? { provider: providerInfo } : {}) });
+      return;
+    }
+
+    const { providerInfo } = await getEngine();
+    sendResponse({ ok: true, provider: providerInfo });
+  } catch (err) {
+    logger.debug('Warmup request failed', err);
+    sendResponse({ ok: false });
+  }
+}
+
 chrome.runtime.onMessage.addListener((message: AppMessage, _sender, sendResponse): boolean => {
   void (async (): Promise<void> => {
     try {
-      if (message.type === 'COMPLETION_REQUEST') {
+      if (message.type === 'COMPLETION_REQUEST' || message.type === 'COMPLETION_PREFETCH') {
         const req = message.payload as CompletionRequestPayload;
         await handleCompletionRequest(req, sendResponse);
+        return;
+      }
+      if (message.type === 'AI_WARMUP_REQUEST') {
+        const payload = message.payload as WarmupRequestPayload;
+        await handleWarmupRequest(payload, sendResponse);
         return;
       }
     } catch (err) {
