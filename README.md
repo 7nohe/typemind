@@ -46,6 +46,8 @@ npm run build
 4. Cycle through suggestions with `Alt/Option + [` and `Alt/Option + ]`
 5. Press `Esc` to dismiss or open settings via the extension popup (choose Chrome AI or OpenAI)
 
+> ℹ️ **First time setup:** Chrome AI APIs require experimental browser flags. Follow [the usage guide](docs/usage.md) to enable the necessary flags and verify the on-device model before loading the extension.
+
 ## Development
 
 ```bash
