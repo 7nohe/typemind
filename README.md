@@ -7,7 +7,7 @@
 ## Features
 
 - 🔒 Complete Privacy: On-device by default; OpenAI requires explicit opt-in
-- ⚡ Fast: Sub-200ms response time target with offline capability
+- ⚡ Fast: Tuned for sub-200ms response time via warmup & caching (actual latency depends on the chosen provider and device)
 - 🌍 Universal: Works on any website with text input fields
 - 🎯 Context-Aware: Heuristic analyzer feeds tone/intent/topic signals into prompt selection
 - 🔁 Multi-Suggestion Overlay: Cycle through up to three completions without leaving the keyboard

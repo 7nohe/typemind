@@ -22,7 +22,7 @@ export class OpenAIProvider {
     if (!this.apiKey) throw new Error('OpenAI API key is missing');
     const abortGuards = createAbortGuards(options);
     try {
-      const requestBody = buildChatBody(text, aiConfig, this.model);
+      const requestBody = buildChatBody(text, aiConfig, this.model, options);
       const response = await sendChatRequest(requestBody, this.apiKey, abortGuards.controller);
       const content = extractCompletionText(response);
       if (!content) throw new Error('OpenAI: empty response');
@@ -35,26 +35,55 @@ export class OpenAIProvider {
   }
 }
 
+interface JsonSchemaResponseFormat {
+  type: 'json_schema';
+  json_schema: {
+    name: string;
+    schema: unknown;
+    strict?: boolean;
+  };
+}
+
 type ChatRequestBody = {
   model: string;
   messages: ChatMessage[];
   temperature: number;
   max_tokens: number;
+  response_format?: JsonSchemaResponseFormat;
 };
 
-function buildChatBody(text: string, aiConfig: AIConfig, model: string): ChatRequestBody {
+function buildChatBody(
+  text: string,
+  aiConfig: AIConfig,
+  model: string,
+  options?: CompletionOptions
+): ChatRequestBody {
   const messages: ChatMessage[] = [];
   if (aiConfig.systemPrompt) {
     messages.push({ role: 'system', content: aiConfig.systemPrompt });
   }
   messages.push({ role: 'user', content: text });
 
-  return {
+  const body: ChatRequestBody = {
     model,
     messages,
     temperature: aiConfig.temperature,
     max_tokens: aiConfig.maxTokens,
   };
+
+  if (options?.responseConstraint) {
+    const responseFormat: JsonSchemaResponseFormat = {
+      type: 'json_schema',
+      json_schema: {
+        name: 'CompletionSuggestions',
+        schema: options.responseConstraint,
+        strict: true,
+      },
+    };
+    body.response_format = responseFormat;
+  }
+
+  return body;
 }
 
 async function sendChatRequest(
