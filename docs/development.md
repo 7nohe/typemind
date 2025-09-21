@@ -117,5 +117,6 @@ Vitest + jsdom are configured. Add specs under `tests/` when changing core logic
 
 - [ ] `npm run lint` and `npm run typecheck` are clean
 - [ ] `npm run build` produces `dist` with `manifest.json`, `background.js`, `content.js`, and `popup/`
+- [ ] `npm run package` outputs `artifacts/typemind-extension.zip` for Chrome Web Store upload
 - [ ] Manual sanity test on a page with a textarea
 - [ ] Update `CHANGELOG.md` and docs as needed

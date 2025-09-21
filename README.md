@@ -69,8 +69,8 @@ npm run build
 # Run unit tests (Vitest)
 npm test
 
-# Production build
-npm run build
+# Package Chrome Web Store upload (build + zip)
+npm run package
 ```
 
 Continuous integration (GitHub Actions) runs typecheck, lint, tests, and build on every push and pull request.

@@ -13,7 +13,8 @@
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
     "format": "prettier --write .",
     "test": "vitest run",
-    "icons": "node scripts/gen-icons.mjs"
+    "icons": "node scripts/gen-icons.mjs",
+    "package": "npm run build && node scripts/package-extension.mjs"
   },
   "dependencies": {
     "react": "^19.1.1",
